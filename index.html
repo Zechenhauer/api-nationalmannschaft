@@ -503,7 +503,7 @@
 
             const isLive = leagueFixtures.some(f => {
                 const s = f.fixture?.status?.short;
-                return s === '1H' || s === '2H' || s === 'HT' || s === 'ET' || s === 'P';
+                return s === '1H' || s === '2H' || s === 'HT' || s === 'ET' || s === 'P' || s === 'LIVE';
             });
             const interval = isLive ? 30000 : 120000;
 
@@ -564,16 +564,31 @@
             } catch (e) { alert("Fehler: " + e.message); }
         }
 
-        // Korrigierte Funktion, die zur vorhandenen 'sent_goals_nations' Tabelle (mit goal_id) passt
+        // Korrigierte Funktion: Passt exakt zu deiner Supabase-Struktur (goal_id) + sortierte Events & Eigentor-Erkennung
         async function syncGoalsToSupabaseAndNotify(fixtureId, events, homeTeamId, homeName, awayName) {
             if (!events || events.length === 0) return;
+
+            // Events chronologisch nach Minute sortieren
+            events.sort((a, b) => {
+                let tA = (a.time?.elapsed || 0) + (a.time?.extra || 0);
+                let tB = (b.time?.elapsed || 0) + (b.time?.extra || 0);
+                return tA - tB;
+            });
+
             let runningHome = 0;
             let runningAway = 0;
 
             for (let ev of events) {
                 if (ev.type === 'Goal') {
-                    if (ev.team.id === homeTeamId) runningHome++;
-                    else runningAway++;
+                    let isOwnGoal = ev.detail && ev.detail.toLowerCase().includes('own goal');
+
+                    if (isOwnGoal) {
+                        if (ev.team.id === homeTeamId) runningAway++;
+                        else runningHome++;
+                    } else {
+                        if (ev.team.id === homeTeamId) runningHome++;
+                        else runningAway++;
+                    }
 
                     let scoreStr = `${runningHome}:${runningAway}`;
                     let pName = ev.player.name || 'Unbekannt';
@@ -648,7 +663,6 @@
 
         async function loadFixtures() {
             const container = document.getElementById("games-container");
-            container.innerHTML = `<div style="text-align: center; padding: 30px; color: var(--text-muted); font-size: 0.85rem;">⌛ Lade Liga A Spielplan...</div>`;
             const season = document.getElementById("season-select").value;
 
             let data = await apiFetch(`fixtures?league=5&season=${season}`);
@@ -664,12 +678,15 @@
 
             leagueFixtures.sort((a, b) => new Date(a.fixture.date) - new Date(b.fixture.date));
 
-            // Falls Spiele live sind, lade deren Events im Hintergrund für den Tor-Alarm
+            const todayStr = new Date().toDateString();
             for (let f of leagueFixtures) {
                 const s = f.fixture.status.short;
                 const fId = f.fixture.id;
-                const isLive = (s === '1H' || s === '2H' || s === 'HT' || s === 'ET' || s === 'P');
-                if (isLive) {
+                const matchDate = new Date(f.fixture.date);
+                const isToday = matchDate.toDateString() === todayStr;
+                const isLiveOrFinished = (s === '1H' || s === '2H' || s === 'HT' || s === 'ET' || s === 'P' || s === 'LIVE' || s === 'FT' || s === 'AET' || s === 'PEN');
+
+                if (isLiveOrFinished && isToday) {
                     const events = await apiFetch(`fixtures/events?fixture=${fId}`);
                     if (events && events.length > 0) {
                         fixtureDetailsCache[fId] = { events };
@@ -793,15 +810,16 @@
             const aName = getTeamName(aTeam);
             const status = f.fixture.status;
             const fixtureId = f.fixture.id;
-            const isLive = (status.short === '1H' || status.short === '2H' || status.short === 'HT' || status.short === 'ET' || status.short === 'P');
+            const isLive = (status.short === '1H' || status.short === '2H' || status.short === 'HT' || status.short === 'ET' || status.short === 'P' || status.short === 'LIVE');
             const isFinished = (status.short === 'FT' || status.short === 'AET' || status.short === 'PEN');
 
-            // Events on-demand nur für die angezeigten Spiele laden
-            if ((isLive || isFinished) && !fixtureDetailsCache[fixtureId]) {
+            if (!fixtureDetailsCache[fixtureId]) {
                 const events = await apiFetch(`fixtures/events?fixture=${fixtureId}`);
                 if (events && events.length > 0) {
                     fixtureDetailsCache[fixtureId] = { events };
-                    await syncGoalsToSupabaseAndNotify(fixtureId, events, hTeam.id, hName, aName);
+                    if (isLive || isFinished) {
+                        await syncGoalsToSupabaseAndNotify(fixtureId, events, hTeam.id, hName, aName);
+                    }
                 }
             }
 
@@ -837,15 +855,27 @@
             let goalRowsList = "";
 
             if (cached && cached.events && cached.events.length > 0) {
+                let sortedEvents = [...cached.events].sort((a, b) => {
+                    let tA = (a.time?.elapsed || 0) + (a.time?.extra || 0);
+                    let tB = (b.time?.elapsed || 0) + (b.time?.extra || 0);
+                    return tA - tB;
+                });
+
                 let nodesHTML = [];
                 let goalRows = [];
                 let runningHome = 0;
                 let runningAway = 0;
 
-                cached.events.forEach(ev => {
+                sortedEvents.forEach(ev => {
                     if (ev.type === 'Goal') {
-                        if (ev.team.id === hTeam.id) runningHome++;
-                        else runningAway++;
+                        let isOwnGoal = ev.detail && ev.detail.toLowerCase().includes('own goal');
+                        if (isOwnGoal) {
+                            if (ev.team.id === hTeam.id) runningAway++;
+                            else runningHome++;
+                        } else {
+                            if (ev.team.id === hTeam.id) runningHome++;
+                            else runningAway++;
+                        }
                     }
 
                     if (ev.type === 'Goal' || ev.type === 'Card' || ev.type === 'subst') {
@@ -890,7 +920,7 @@
         function checkLiveState() {
             const isLive = leagueFixtures.some(f => {
                 const s = f.fixture?.status?.short;
-                return s === '1H' || s === '2H' || s === 'HT' || s === 'ET' || s === 'P';
+                return s === '1H' || s === '2H' || s === 'HT' || s === 'ET' || s === 'P' || s === 'LIVE';
             });
             document.getElementById("live-indicator").style.display = isLive ? "flex" : "none";
         }
@@ -916,14 +946,26 @@
 
             let eventsHTML = `<div style="color:var(--text-muted); font-size:0.85rem; text-align:center; padding:15px;">Keine Events für diese Partie aufgezeichnet.</div>`;
             if (events.length > 0) {
+                events.sort((a, b) => {
+                    let tA = (a.time?.elapsed || 0) + (a.time?.extra || 0);
+                    let tB = (b.time?.elapsed || 0) + (b.time?.extra || 0);
+                    return tA - tB;
+                });
+
                 let runningH = 0;
                 let runningA = 0;
                 let eventRows = [];
 
                 events.forEach(ev => {
                     if (ev.type === 'Goal') {
-                        if (ev.team.id === f.teams.home.id) runningH++;
-                        else runningA++;
+                        let isOwnGoal = ev.detail && ev.detail.toLowerCase().includes('own goal');
+                        if (isOwnGoal) {
+                            if (ev.team.id === f.teams.home.id) runningA++;
+                            else runningH++;
+                        } else {
+                            if (ev.team.id === f.teams.home.id) runningH++;
+                            else runningA++;
+                        }
                     }
 
                     let isGoal = ev.type === 'Goal';
