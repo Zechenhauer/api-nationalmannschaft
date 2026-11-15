@@ -564,6 +564,7 @@
             } catch (e) { alert("Fehler: " + e.message); }
         }
 
+        // Korrigierte Funktion, die zur vorhandenen 'sent_goals_nations' Tabelle (mit goal_id) passt
         async function syncGoalsToSupabaseAndNotify(fixtureId, events, homeTeamId, homeName, awayName) {
             if (!events || events.length === 0) return;
             let runningHome = 0;
@@ -579,33 +580,31 @@
                     let min = ev.time.elapsed + (ev.time.extra ? `+${ev.time.extra}` : '') + "'";
                     let tName = getTeamName(ev.team);
 
+                    let uniqueGoalId = `nations_${fixtureId}_${scoreStr}_${pName.replace(/\s+/g, '_')}_${min}`;
+
                     try {
-                        let { data: existing } = await supabaseClient
+                        let { data: existing, error: checkError } = await supabaseClient
                             .from('sent_goals_nations')
-                            .select('id')
-                            .eq('fixture_id', fixtureId)
-                            .eq('player_name', pName)
-                            .eq('minute', min)
+                            .select('goal_id')
+                            .eq('goal_id', uniqueGoalId)
                             .maybeSingle();
 
-                        if (!existing) {
-                            await supabaseClient.from('sent_goals_nations').insert({
-                                fixture_id: fixtureId,
-                                team_name: tName,
-                                player_name: pName,
-                                minute: min,
-                                score: scoreStr
-                            });
+                        if (!existing && !checkError) {
+                            let { error: insertError } = await supabaseClient
+                                .from('sent_goals_nations')
+                                .insert([{ goal_id: uniqueGoalId }]);
 
-                            await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
-                                method: 'POST', mode: 'cors',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    table: 'push_subscriptions_nations',
-                                    title: `⚽ TOR für ${tName}! (${scoreStr})`,
-                                    body: `Torschütze: ${pName} (${min})\n${homeName} vs ${awayName}`
-                                })
-                            });
+                            if (!insertError) {
+                                await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+                                    method: 'POST', mode: 'cors',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        table: 'push_subscriptions_nations',
+                                        title: `⚽ TOR für ${tName}! (${scoreStr})`,
+                                        body: `Torschütze: ${pName} (${min})\n${homeName} vs ${awayName}`
+                                    })
+                                });
+                            }
                         }
                     } catch (err) {
                         console.error("Fehler beim Synchronisieren & Senden des Tors:", err);
@@ -797,7 +796,7 @@
             const isLive = (status.short === '1H' || status.short === '2H' || status.short === 'HT' || status.short === 'ET' || status.short === 'P');
             const isFinished = (status.short === 'FT' || status.short === 'AET' || status.short === 'PEN');
 
-            // Events on-demand für die angezeigten Spiele laden, falls noch nicht im Cache
+            // Events on-demand nur für die angezeigten Spiele laden
             if ((isLive || isFinished) && !fixtureDetailsCache[fixtureId]) {
                 const events = await apiFetch(`fixtures/events?fixture=${fixtureId}`);
                 if (events && events.length > 0) {
