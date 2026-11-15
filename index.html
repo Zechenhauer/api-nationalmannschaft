@@ -564,7 +564,7 @@
             } catch (e) { alert("Fehler: " + e.message); }
         }
 
-        // Korrigierte Funktion: Passt exakt zu deiner Supabase-Struktur (goal_id) + sortierte Events & Eigentor-Erkennung
+        // Synchronisation mit exakter Einbindung in deine sent_goals_nations Tabellenstruktur
         async function syncGoalsToSupabaseAndNotify(fixtureId, events, homeTeamId, homeName, awayName) {
             if (!events || events.length === 0) return;
 
@@ -596,6 +596,7 @@
                     let tName = getTeamName(ev.team);
 
                     let uniqueGoalId = `nations_${fixtureId}_${scoreStr}_${pName.replace(/\s+/g, '_')}_${min}`;
+                    let matchIdStr = String(fixtureId);
 
                     try {
                         let { data: existing, error: checkError } = await supabaseClient
@@ -607,7 +608,12 @@
                         if (!existing && !checkError) {
                             let { error: insertError } = await supabaseClient
                                 .from('sent_goals_nations')
-                                .insert([{ goal_id: uniqueGoalId }]);
+                                .insert([{
+                                    goal_id: uniqueGoalId,
+                                    match_id: matchIdStr,
+                                    home_score: runningHome,
+                                    away_score: runningAway
+                                }]);
 
                             if (!insertError) {
                                 await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
