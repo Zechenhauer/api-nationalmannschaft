@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UEFA Nations League - Liga A Elite Edition</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%23050810%22/><text x=%2250%22 y=%2270%22 font-size=%2260%22 text-anchor=%22middle%22>⚽</text></svg>">
+    <title>UEFA Nations League - Liga A</title>
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="apple-touch-icon" href="logo.png">
     
     <style>
         :root {
@@ -24,7 +25,7 @@
             --shadow-premium: 0 12px 40px rgba(0, 0, 0, 0.7);
         }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+- { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 
         body {
             background-color: var(--bg-color);
@@ -65,6 +66,11 @@
             -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: left;
         }
         .subtitle { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; text-align: left; font-weight: 500; }
+        .author-sub {
+            display: flex; align-items: center; gap: 8px;
+            margin-top: 8px; font-size: 0.78rem; font-weight: 700;
+            color: var(--accent-cyan); text-align: left;
+        }
         
         .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
         .action-btn {
@@ -289,6 +295,10 @@
             <div>
                 <div class="app-title">UEFA NATIONS LEAGUE <span style="font-size: 0.7rem; background: var(--accent-cyan); color: #000; padding: 3px 8px; border-radius: 6px; vertical-align: middle; font-weight: 900;">LIGA A</span></div>
                 <div class="subtitle">Elite Analytics & Live Match Center</div>
+                <div class="author-sub">
+                    <img src="logo.png" alt="Webmanagement Jürgen Schützendorf" style="width: 80px; height: 80px; border-radius: 10px; object-fit: cover;">
+                    <span>Webmanagement Jürgen Schützendorf</span>
+                </div>
             </div>
             
             <div class="header-actions">
@@ -564,11 +574,9 @@
             } catch (e) { alert("Fehler: " + e.message); }
         }
 
-        // Synchronisation mit exakter Einbindung in deine sent_goals_nations Tabellenstruktur
         async function syncGoalsToSupabaseAndNotify(fixtureId, events, homeTeamId, homeName, awayName) {
             if (!events || events.length === 0) return;
 
-            // Events chronologisch nach Minute sortieren
             events.sort((a, b) => {
                 let tA = (a.time?.elapsed || 0) + (a.time?.extra || 0);
                 let tB = (b.time?.elapsed || 0) + (b.time?.extra || 0);
